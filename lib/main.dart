@@ -11,9 +11,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
+      theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
       home: const MyHomePage(title: 'Rate My Stuff'),
     );
   }
@@ -31,15 +29,15 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     throw UnimplementedError();
   }
-  }
+}
 
-  @override
-  Widget build(BuildContext context, dynamic widget) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-      ),
-      body: 
-    );
+@override
+Widget build(BuildContext context, dynamic widget) {
+  return Scaffold(
+    appBar: AppBar(
+      backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      title: Text(widget.title),
+    ),
+    body: Center(),
+  );
 }
