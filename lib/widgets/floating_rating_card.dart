@@ -40,11 +40,11 @@ class FloatingRatingCard extends StatelessWidget {
                 ),
               ),
               Positioned(
-                right: 12,
+                right: 13,
                 bottom: -18,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
+                    horizontal: 18,
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(

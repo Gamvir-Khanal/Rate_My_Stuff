@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/dummy_rating.dart';
 import '../models/rating_category.dart';
 import '../widgets/floating_rating_card.dart';
+import 'camera_capture_screen.dart';
 import 'category_picker_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -74,7 +75,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onGetRated() {
-    debugPrint('Get Rated tapped for category: ${_selectedCategory.id}');
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
+    );
   }
 
   @override

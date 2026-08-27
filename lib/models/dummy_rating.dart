@@ -34,7 +34,7 @@ const List<DummyRating> dummyRatings = [
   DummyRating(
     imagePath: 'assets/images/study.png',
     rating: 8.2,
-    remark: 'Hey Topper, plaese can you teach me calculus?😭😭😭',
+    remark: 'Please can you teach me calculus?😭😭😭',
   ),
   DummyRating(
     imagePath: 'assets/images/nature.png',
