@@ -77,7 +77,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onGetRated() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
+      MaterialPageRoute(
+        builder: (_) => CameraCaptureScreen(category: _selectedCategory),
+      ),
     );
   }
 

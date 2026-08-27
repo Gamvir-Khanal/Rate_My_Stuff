@@ -5,9 +5,12 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import '../models/rating_category.dart';
+import 'scanning_screen.dart';
 
 class CameraCaptureScreen extends StatefulWidget {
-  const CameraCaptureScreen({super.key});
+  final RatingCategory category;
+  const CameraCaptureScreen({super.key, required this.category});
 
   @override
   State<CameraCaptureScreen> createState() => _CameraCaptureScreenState();
@@ -185,10 +188,16 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   }
 
   void _returnImage(File imageFile) {
-    // TODO: navigate to loading/result screen, passing `imageFile`
-    // and the selected category, then call your AI rating service.
     debugPrint('Image ready: ${imageFile.path}');
-    Navigator.pop(context, imageFile);
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ScanningScreen(
+          imageFile: imageFile,
+          category: widget.category,
+        ),
+      ),
+    );
   }
 
   String get _timerLabel {
