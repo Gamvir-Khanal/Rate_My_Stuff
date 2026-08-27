@@ -40,6 +40,7 @@ dependencies:
 
   # Gallery / Google Photos image picker
   image_picker: ^1.1.2
+  screen_brightness: ^2.1.11
 
 dev_dependencies:
   flutter_test:
