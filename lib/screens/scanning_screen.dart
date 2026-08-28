@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/rating_category.dart';
+import '../services/ai_rating_service.dart';
+import 'result_screen.dart';
 
 class ScanningScreen extends StatefulWidget {
   final File imageFile;
@@ -23,9 +25,14 @@ class _ScanningScreenState extends State<ScanningScreen>
   late final AnimationController _animationController;
   late final Animation<double> _scanAnimation;
 
+  bool _aiDone = false;
+  AIRatingResult? _result;
+
   @override
   void initState() {
     super.initState();
+
+    // Scan line loops indefinitely until the AI result arrives
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -33,26 +40,70 @@ class _ScanningScreenState extends State<ScanningScreen>
 
     _scanAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(
-          begin: -1.0,
-          end: 1.0,
-        ).chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween<double>(begin: -1.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
         weight: 50,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 1.0,
-          end: -1.0,
-        ).chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween<double>(begin: 1.0, end: -1.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
         weight: 50,
       ),
     ]).animate(_animationController);
 
-    _animationController.addListener(() {
-      setState(() {});
-    });
+    _animationController.addListener(() => setState(() {}));
 
-    _animationController.forward();
+    // Repeat until we stop it
+    _animationController.repeat();
+
+    // Fire AI call immediately
+    _startAiCall();
+  }
+
+  Future<void> _startAiCall() async {
+    try {
+      final result = await AIRatingService()
+          .rateImage(widget.imageFile, widget.category.label);
+      if (!mounted) return;
+      setState(() {
+        _aiDone = true;
+        _result = result;
+      });
+      _animationController.stop();
+      _animationController.forward().then((_) => _navigateToResult());
+    } catch (e) {
+      if (!mounted) return;
+      _animationController.stop();
+      setState(() => _aiDone = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('AI rating failed: $e'),
+          backgroundColor: Colors.redAccent,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Go Back',
+            textColor: Colors.white,
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+      );
+    }
+  }
+
+  void _navigateToResult() {
+    if (!mounted || _result == null) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ResultScreen(
+          imageFile: widget.imageFile,
+          rating: _result!.rating,
+          remark: _result!.remarks,
+          category: widget.category,
+        ),
+      ),
+    );
   }
 
   @override
@@ -62,20 +113,16 @@ class _ScanningScreenState extends State<ScanningScreen>
   }
 
   String get _statusText {
+    if (_aiDone) return 'Analysis complete. Loading result...';
     final val = _animationController.value;
-    if (val == 0.0) return 'Initializing scanner...';
-    if (val <= 0.3) return 'Reading image pixels...';
-    if (val <= 0.6) {
-      return 'Analyzing ${widget.category.label} characteristics...';
-    }
-    if (val <= 0.9) return 'Evaluating details and lighting...';
-    return 'Scan completed. AI analysis ready.';
+    if (val <= 0.25) return 'Reading image pixels...';
+    if (val <= 0.5) return 'Analyzing ${widget.category.label} characteristics...';
+    if (val <= 0.75) return 'Evaluating details and lighting...';
+    return 'Running AI model...';
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool isCompleted = _animationController.isCompleted;
-
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -90,6 +137,7 @@ class _ScanningScreenState extends State<ScanningScreen>
         child: SafeArea(
           child: Column(
             children: [
+              // ── Top bar ──────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 8.0,
@@ -123,6 +171,7 @@ class _ScanningScreenState extends State<ScanningScreen>
                 ),
               ),
 
+              // ── Category badge ────────────────────────────────────
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 8.0),
                 padding: const EdgeInsets.symmetric(
@@ -130,10 +179,10 @@ class _ScanningScreenState extends State<ScanningScreen>
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: const Color(0xFFFF6FD8).withOpacity(0.3),
+                    color: const Color(0xFFFF6FD8).withValues(alpha: 0.3),
                     width: 1,
                   ),
                 ),
@@ -159,6 +208,7 @@ class _ScanningScreenState extends State<ScanningScreen>
 
               const Spacer(),
 
+              // ── Scanning image with animated line ─────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Center(
@@ -168,12 +218,12 @@ class _ScanningScreenState extends State<ScanningScreen>
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: const Color(0xFF6A3DFF).withOpacity(0.4),
+                        color: const Color(0xFF6A3DFF).withValues(alpha: 0.4),
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF6A3DFF).withOpacity(0.25),
+                          color: const Color(0xFF6A3DFF).withValues(alpha: 0.25),
                           blurRadius: 30,
                           spreadRadius: 2,
                         ),
@@ -186,17 +236,19 @@ class _ScanningScreenState extends State<ScanningScreen>
                         children: [
                           Image.file(widget.imageFile, fit: BoxFit.cover),
 
+                          // Scan line
                           Align(
-                            alignment: Alignment(0, _scanAnimation.value),
+                            alignment:
+                                Alignment(0, _scanAnimation.value),
                             child: Container(
                               height: 5,
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
                                     Colors.transparent,
-                                    const Color(0xFFFF6FD8).withOpacity(0.8),
+                                    const Color(0xFFFF6FD8).withValues(alpha: 0.8),
                                     const Color(0xFF6A3DFF),
-                                    const Color(0xFFFF6FD8).withOpacity(0.8),
+                                    const Color(0xFFFF6FD8).withValues(alpha: 0.8),
                                     Colors.transparent,
                                   ],
                                 ),
@@ -204,7 +256,7 @@ class _ScanningScreenState extends State<ScanningScreen>
                                   BoxShadow(
                                     color: const Color(
                                       0xFFFF6FD8,
-                                    ).withOpacity(0.8),
+                                    ).withValues(alpha: 0.8),
                                     blurRadius: 16,
                                     spreadRadius: 3,
                                   ),
@@ -221,6 +273,7 @@ class _ScanningScreenState extends State<ScanningScreen>
 
               const Spacer(),
 
+              // ── Status panel ──────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24.0,
@@ -230,61 +283,47 @@ class _ScanningScreenState extends State<ScanningScreen>
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       width: 1,
                     ),
                   ),
-                  child: Column(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (!isCompleted)
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Color(0xFFFF6FD8),
-                              ),
-                            )
-                          else
-                            const Icon(
-                              Icons.check_circle_outline,
-                              color: Colors.greenAccent,
-                              size: 20,
-                            ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _statusText,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (isCompleted) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          'AI rating & remarks integration coming soon!',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
-                            fontSize: 12,
-                            fontStyle: FontStyle.italic,
+                      if (_aiDone)
+                        const Icon(
+                          Icons.check_circle_outline,
+                          color: Colors.greenAccent,
+                          size: 20,
+                        )
+                      else
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFFFF6FD8),
                           ),
                         ),
-                      ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _statusText,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
+
               const SizedBox(height: 16),
             ],
           ),

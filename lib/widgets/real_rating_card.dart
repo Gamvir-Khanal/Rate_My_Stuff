@@ -1,16 +1,22 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 
-import '../models/dummy_rating.dart';
+class RealRatingCard extends StatelessWidget {
+  final File imageFile;
+  final double rating;
+  final String remark;
 
-class FloatingRatingCard extends StatelessWidget {
-  final DummyRating data;
-
-  const FloatingRatingCard({super.key, required this.data});
+  const RealRatingCard({
+    super.key,
+    required this.imageFile,
+    required this.rating,
+    required this.remark,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 360,
+      width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -32,9 +38,9 @@ class FloatingRatingCard extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(24),
                 ),
-                child: Image.asset(
-                  data.imagePath,
-                  height: 400,
+                child: Image.file(
+                  imageFile,
+                  height: MediaQuery.of(context).size.height * 0.44,
                   width: double.infinity,
                   fit: BoxFit.cover,
                 ),
@@ -61,7 +67,7 @@ class FloatingRatingCard extends StatelessWidget {
                     ],
                   ),
                   child: Text(
-                    '${data.rating.toStringAsFixed(1)} / 10',
+                    '${rating.toStringAsFixed(1)} / 10',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w800,
@@ -73,14 +79,15 @@ class FloatingRatingCard extends StatelessWidget {
             ],
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 26, 16, 18),
+            padding: const EdgeInsets.fromLTRB(20, 30, 20, 22),
             child: Text(
-              data.remark,
+              remark,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 13.5,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF2D1B4E),
+                height: 1.4,
               ),
             ),
           ),

@@ -280,7 +280,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                                 vertical: 10,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.45),
+                                color: Colors.black.withValues(alpha: 0.45),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Row(
@@ -339,7 +339,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                               width: 52,
                               height: 52,
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.45),
+                                color: Colors.black.withValues(alpha: 0.45),
                                 shape: BoxShape.circle,
                                 border:
                                     Border.all(color: Colors.white, width: 1.5),
@@ -404,7 +404,7 @@ class _TopIconButton extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.45),
+          color: Colors.black.withValues(alpha: 0.45),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 22),

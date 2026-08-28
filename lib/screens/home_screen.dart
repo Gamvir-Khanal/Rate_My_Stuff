@@ -173,11 +173,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? Colors.white
-                                        : Colors.white.withOpacity(0.18),
+                                        : Colors.white.withValues(alpha: 0.18),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(
-                                        isSelected ? 0 : 0.5,
+                                      color: Colors.white.withValues(
+                                        alpha: isSelected ? 0 : 0.5,
                                       ),
                                       width: 1,
                                     ),
