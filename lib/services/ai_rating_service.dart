@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
@@ -25,6 +27,41 @@ class AIRatingService {
   static bool get isKeyConfigured =>
       _apiKey.isNotEmpty && !_apiKey.startsWith('YOUR_');
 
+  Future<Uint8List> _compressImage(File file, {int maxDim = 800}) async {
+    final bytes = await file.readAsBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+
+    int width = image.width;
+    int height = image.height;
+    if (width > maxDim || height > maxDim) {
+      if (width > height) {
+        height = (height * maxDim / width).round();
+        width = maxDim;
+      } else {
+        width = (width * maxDim / height).round();
+        height = maxDim;
+      }
+    }
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+    final resized = await recorder.endRecording().toImage(width, height);
+
+    final byteData = await resized.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    resized.dispose();
+
+    return byteData!.buffer.asUint8List();
+  }
+
   Future<AIRatingResult> rateImage(File imageFile, String categoryLabel) async {
     if (!isKeyConfigured) {
       debugPrint(
@@ -34,53 +71,44 @@ class AIRatingService {
       throw Exception('Gemini API key is not configured.');
     }
 
-    debugPrint(
-      '🔑 API key loaded (${_apiKey.substring(0, 8)}...). '
-      'Calling Gemini for "$categoryLabel"...',
-    );
+    debugPrint('🔑 Calling Gemini for "$categoryLabel"...');
 
     try {
-      final model = GenerativeModel(
-        model: 'gemini-3.6-flash',
-        apiKey: _apiKey,
-        generationConfig: GenerationConfig(
-          responseMimeType: 'application/json',
-        ),
-      );
+      final model = GenerativeModel(model: 'gemini-3.6-flash', apiKey: _apiKey);
 
-      final imageBytes = await imageFile.readAsBytes();
+      final compressedBytes = await _compressImage(imageFile);
+      debugPrint(
+        '📸 Image compressed: ${(compressedBytes.length / 1024).toStringAsFixed(0)} KB',
+      );
 
       final content = [
         Content.multi([
-          DataPart('image/jpeg', imageBytes),
-          TextPart('''
-You are a brutally honest, hilarious, and witty Gen-Z critic on a "Rate My Stuff" app.
-
-The user submitted a photo in the "$categoryLabel" category. Look at the image carefully and rate it.
-
-RULES:
-- Be GENUINELY funny. Use humor, sarcasm, pop-culture references, and emojis.
-- Be specific about what you SEE in the image — don't be generic.
-- If it's bad, roast it lovingly. If it's great, hype it up like a best friend would.
-- Keep remarks to 1 sentences max. Every word should hit.
-- Rating must be honest (1.0 = disaster, 10.0 = absolute perfection).
-
-Respond with ONLY this JSON (no extra text):
-{
-  "rating": <number between 1.0 and 10.0>,
-  "remarks": "<your hilarious 2-3 sentence review>"
-}
-          '''),
+          DataPart('image/png', compressedBytes),
+          TextPart(
+            'Rate this "$categoryLabel" photo on a scale of 1.0 to 10.0. '
+            'Be a funny, witty Gen-Z critic, specific about what you see in the photo, and use emojis. '
+            'Keep your remarks to exactly 1 sentence and make it so comedy that anyone in the world will laugh no matter what. '
+            'You MUST return ONLY a JSON object in this exact format: '
+            '{"rating": 8.5, "remarks": "your funny review here"}',
+          ),
         ]),
       ];
 
       final response = await model.generateContent(content);
-      final text = response.text;
+      var text = response.text;
 
-      debugPrint('✅ Gemini response: $text');
+      debugPrint('✅ Gemini raw response: $text');
 
       if (text == null || text.trim().isEmpty) {
         throw Exception('Gemini returned an empty response.');
+      }
+      text = text.trim();
+      if (text.startsWith('```')) {
+        text = text.replaceFirst(RegExp(r'^```(json)?'), '');
+        if (text.endsWith('```')) {
+          text = text.substring(0, text.length - 3);
+        }
+        text = text.trim();
       }
 
       final jsonResponse = jsonDecode(text) as Map<String, dynamic>;
