@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -33,6 +34,8 @@ class _ResultScreenState extends State<ResultScreen>
     with SingleTickerProviderStateMixin {
   final GlobalKey _cardKey = GlobalKey();
   bool _isSharing = false;
+  bool _isSaving = false;
+  bool _isSaved = false;
 
   late final AnimationController _entryController;
   late final Animation<double> _fadeAnim;
@@ -68,8 +71,9 @@ class _ResultScreenState extends State<ResultScreen>
       final boundary =
           _cardKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
       final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      final ByteData? byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
+      final ByteData? byteData = await image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
       if (byteData == null) throw Exception('Failed to capture card');
 
       final Uint8List pngBytes = byteData.buffer.asUint8List();
@@ -80,7 +84,8 @@ class _ResultScreenState extends State<ResultScreen>
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path, mimeType: 'image/png')],
-          text: 'I got ${widget.rating.toStringAsFixed(1)}/10 on Rate My Stuff! ${widget.category.emoji}',
+          text:
+              'I got ${widget.rating.toStringAsFixed(1)}/10 on Rate My Stuff! ${widget.category.emoji}',
         ),
       );
     } catch (e) {
@@ -107,6 +112,52 @@ class _ResultScreenState extends State<ResultScreen>
     );
   }
 
+  Future<void> _saveToPhone() async {
+    setState(() => _isSaving = true);
+    try {
+      // Check and request permission
+      bool hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        hasAccess = await Gal.requestAccess();
+      }
+      if (!hasAccess) {
+        throw Exception('Photo library access was denied.');
+      }
+
+      final boundary =
+          _cardKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final ByteData? byteData = await image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      if (byteData == null) throw Exception('Failed to capture card');
+
+      final Uint8List pngBytes = byteData.buffer.asUint8List();
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/rate_my_stuff_card.png');
+      await file.writeAsBytes(pngBytes);
+
+      await Gal.putImage(file.path);
+
+      if (mounted) {
+        setState(() {
+          _isSaved = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not save: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -123,7 +174,6 @@ class _ResultScreenState extends State<ResultScreen>
         child: SafeArea(
           child: Column(
             children: [
-              // ── Top bar ──────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 8.0,
@@ -175,7 +225,6 @@ class _ResultScreenState extends State<ResultScreen>
                 ),
               ),
 
-              // ── Card ─────────────────────────────────────────────
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -201,7 +250,6 @@ class _ResultScreenState extends State<ResultScreen>
                 ),
               ),
 
-              // ── Buttons ──────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
                 child: Column(
@@ -238,29 +286,78 @@ class _ResultScreenState extends State<ResultScreen>
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Try Again button
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _tryAgain,
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('Try Again'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(
-                            color: Colors.white,
-                            width: 2,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                    Row(
+                      children: [
+                        // Try Again button
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _tryAgain,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Try Again'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(
+                                color: Colors.white,
+                                width: 2,
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        // Save to Phone button
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: (_isSaving || _isSaved)
+                                ? null
+                                : _saveToPhone,
+                            icon: _isSaving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : (_isSaved
+                                      ? const Icon(Icons.check_rounded)
+                                      : const Icon(Icons.save_alt_rounded)),
+                            label: Text(
+                              _isSaving
+                                  ? 'Saving...'
+                                  : (_isSaved ? 'Saved' : 'Save to Phone'),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              disabledForegroundColor: Colors.white.withValues(
+                                alpha: 0.6,
+                              ),
+                              side: BorderSide(
+                                color: _isSaved
+                                    ? Colors.white.withValues(alpha: 0.6)
+                                    : Colors.white,
+                                width: 2,
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
