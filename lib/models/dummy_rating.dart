@@ -42,6 +42,47 @@ const List<DummyRating> dummyRatings = [
     remark: 'I just love it brooo, very beautiful scene.😊',
   ),
   DummyRating(
+    imagePath: 'assets/images/cat.png',
+    rating: 7.8,
+    remark: 'The swag of the cat is on another level.',
+  ),
+  DummyRating(
+    imagePath: 'assets/images/mudface.png',
+    rating: 0,
+    remark: 'Bro never show this thing to anyone again 🤮🤢',
+  ),
+  DummyRating(
+    imagePath: 'assets/images/ladybug.png',
+    rating: 7.9,
+    remark: 'The only "Lady"bug in the world that stays quite ☠️😂',
+  ),
+  DummyRating(
+    imagePath: 'assets/images/alarm.png',
+    rating: 8.3,
+    remark: 'I think your snoring is louder than this antique alarm clock ⏳',
+  ),
+  DummyRating(
+    imagePath: 'assets/images/dino.png',
+    rating: 5.5,
+    remark: 'Poor dinosaurs 😭 Instead they could give a bite to each other ☠️',
+  ),
+  DummyRating(
+    imagePath: 'assets/images/bracelets.png',
+    rating: 8.2,
+    remark:
+        'Is it your hobby to collect it or your friends don\'t know any other things to gift?',
+  ),
+  DummyRating(
+    imagePath: 'assets/images/bulb.png',
+    rating: 6,
+    remark: 'Just like the bulb, I see your future not so bright ☠️💡',
+  ),
+  DummyRating(
+    imagePath: 'assets/images/bear.png',
+    rating: 3,
+    remark: '🦄 Unicorn\'s fart smells better than this thing 🐻 ',
+  ),
+  DummyRating(
     imagePath: 'assets/images/paint.png',
     rating: 6.5,
     remark: 'Good, but I see places for improvements!',
