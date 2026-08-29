@@ -72,21 +72,10 @@ class _ScanningScreenState extends State<ScanningScreen>
       _animationController.stop();
       _animationController.forward().then((_) => _navigateToResult());
     } catch (e) {
+      debugPrint('❌ AI rating failed: $e');
       if (!mounted) return;
       _animationController.stop();
-      setState(() => _aiDone = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('AI rating failed: $e'),
-          backgroundColor: Colors.redAccent,
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'Go Back',
-            textColor: Colors.white,
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ),
-      );
+      Navigator.of(context).pop();
     }
   }
 

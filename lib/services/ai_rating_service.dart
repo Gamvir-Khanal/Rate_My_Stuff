@@ -27,7 +27,7 @@ class AIRatingService {
   static bool get isKeyConfigured =>
       _apiKey.isNotEmpty && !_apiKey.startsWith('YOUR_');
 
-  Future<Uint8List> _compressImage(File file, {int maxDim = 800}) async {
+  Future<Uint8List> _compressImage(File file, {int maxDim = 600}) async {
     final bytes = await file.readAsBytes();
     final codec = await ui.instantiateImageCodec(bytes);
     final frame = await codec.getNextFrame();
@@ -71,52 +71,88 @@ class AIRatingService {
       throw Exception('Gemini API key is not configured.');
     }
 
-    debugPrint('🔑 Calling Gemini for "$categoryLabel"...');
+    int maxRetries = 3;
+    int attempt = 0;
 
-    try {
-      final model = GenerativeModel(model: 'gemini-3.6-flash', apiKey: _apiKey);
+    while (true) {
+      attempt++;
+      try {
+        debugPrint(
+          '🔑 Calling Gemini for "$categoryLabel" (Attempt $attempt)...',
+        );
+        return await _executeRateImageCall(imageFile, categoryLabel);
+      } catch (e, stack) {
+        final errorString = e.toString().toLowerCase();
+        bool isRateLimit =
+            errorString.contains('429') ||
+            errorString.contains('resourceexhausted') ||
+            errorString.contains('quota') ||
+            errorString.contains('rate limit');
 
-      final compressedBytes = await _compressImage(imageFile);
-      debugPrint(
-        '📸 Image compressed: ${(compressedBytes.length / 1024).toStringAsFixed(0)} KB',
-      );
+        if (isRateLimit && attempt < maxRetries) {
+          final waitSeconds = 2 * attempt;
+          debugPrint(
+            '⏳ Rate limit hit (429/TPM). Waiting ${waitSeconds}s before retrying attempt ${attempt + 1} of $maxRetries...',
+          );
+          await Future.delayed(Duration(seconds: waitSeconds));
+        } else {
+          debugPrint('❌ Gemini API call failed on attempt $attempt: $e');
+          debugPrint('Stack trace: $stack');
+          rethrow;
+        }
+      }
+    }
+  }
 
-      final content = [
-        Content.multi([
-          DataPart('image/png', compressedBytes),
-          TextPart(
-            'Rate this "$categoryLabel" photo on a scale of 1.0 to 10.0. '
-            'Be a funny, witty Gen-Z critic, specific about what you see in the photo, and use emojis. '
-            'Keep your remarks to exactly 1 sentence and make it so comedy that anyone in the world will laugh no matter what. '
-            'You MUST return ONLY a JSON object in this exact format: '
-            '{"rating": 8.5, "remarks": "your funny review here"}',
-          ),
-        ]),
-      ];
+  Future<AIRatingResult> _executeRateImageCall(
+    File imageFile,
+    String categoryLabel,
+  ) async {
+    final model = GenerativeModel(model: 'gemini-3.6-flash', apiKey: _apiKey);
 
-      final response = await model.generateContent(content);
-      var text = response.text;
+    final compressedBytes = await _compressImage(imageFile);
+    debugPrint(
+      '📸 Image compressed: ${(compressedBytes.length / 1024).toStringAsFixed(0)} KB',
+    );
 
-      debugPrint('✅ Gemini raw response: $text');
+    final content = [
+      Content.multi([
+        DataPart('image/jpeg', compressedBytes),
+        TextPart(
+          'Rate this "$categoryLabel" photo on a scale of 1.0 to 10.0. '
+          'Be a funny, witty Gen-Z critic, specific about what you see in the photo, and use emojis. '
+          'Keep your remarks to exactly 1 sentence and make it so comedy that anyone in the world will laugh no matter what. '
+          'You MUST return ONLY a JSON object in this exact format: '
+          '{"rating": 8.5, "remarks": "your funny review here"}',
+        ),
+      ]),
+    ];
 
-      if (text == null || text.trim().isEmpty) {
-        throw Exception('Gemini returned an empty response.');
+    final response = await model
+        .generateContent(content)
+        .timeout(
+          const Duration(seconds: 20),
+          onTimeout: () {
+            throw Exception('Gemini API request timed out (20s).');
+          },
+        );
+    var text = response.text;
+
+    debugPrint('✅ Gemini raw response: $text');
+
+    if (text == null || text.trim().isEmpty) {
+      throw Exception('Gemini returned an empty response.');
+    }
+    text = text.trim();
+    if (text.startsWith('```')) {
+      text = text.replaceFirst(RegExp(r'^```(json)?'), '');
+      if (text.endsWith('```')) {
+        text = text.substring(0, text.length - 3);
       }
       text = text.trim();
-      if (text.startsWith('```')) {
-        text = text.replaceFirst(RegExp(r'^```(json)?'), '');
-        if (text.endsWith('```')) {
-          text = text.substring(0, text.length - 3);
-        }
-        text = text.trim();
-      }
-
-      final jsonResponse = jsonDecode(text) as Map<String, dynamic>;
-      return AIRatingResult.fromJson(jsonResponse);
-    } catch (e, stack) {
-      debugPrint('❌ Gemini API call failed: $e');
-      debugPrint('Stack trace: $stack');
-      rethrow;
     }
+
+    final jsonResponse = jsonDecode(text) as Map<String, dynamic>;
+    return AIRatingResult.fromJson(jsonResponse);
   }
 }

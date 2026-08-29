@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/rating_category.dart';
+import '../services/database_helper.dart';
 import '../widgets/real_rating_card.dart';
 import 'camera_capture_screen.dart';
 
@@ -17,6 +18,7 @@ class ResultScreen extends StatefulWidget {
   final double rating;
   final String remark;
   final RatingCategory category;
+  final bool isFromHistory;
 
   const ResultScreen({
     super.key,
@@ -24,6 +26,7 @@ class ResultScreen extends StatefulWidget {
     required this.rating,
     required this.remark,
     required this.category,
+    this.isFromHistory = false,
   });
 
   @override
@@ -57,6 +60,23 @@ class _ResultScreenState extends State<ResultScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _entryController, curve: Curves.easeOut));
     _entryController.forward();
+
+    if (!widget.isFromHistory) {
+      _saveToHistoryDatabase();
+    }
+  }
+
+  void _saveToHistoryDatabase() async {
+    try {
+      await DatabaseHelper.instance.insertRating(
+        imageFile: widget.imageFile,
+        rating: widget.rating,
+        remark: widget.remark,
+        categoryId: widget.category.id,
+      );
+    } catch (error) {
+      debugPrint('Error saving to local history database: $error');
+    }
   }
 
   @override

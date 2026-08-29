@@ -8,6 +8,7 @@ import '../models/rating_category.dart';
 import '../widgets/floating_rating_card.dart';
 import 'camera_capture_screen.dart';
 import 'category_picker_sheet.dart';
+import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -79,6 +80,15 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => CameraCaptureScreen(category: _selectedCategory),
+      ),
+    );
+  }
+
+  void _openHistoryScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const HistoryScreen(),
       ),
     );
   }
@@ -242,30 +252,58 @@ class _HomeScreenState extends State<HomeScreen> {
 
               Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
+                  horizontal: 24,
                   vertical: 28,
                 ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _onGetRated,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF6A3DFF),
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
+                child: Row(
+                  children: [
+                    // History button at bottom left
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                      elevation: 6,
-                    ),
-                    child: const Text(
-                      'Get Rated !',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                      child: IconButton(
+                        iconSize: 26,
+                        padding: const EdgeInsets.all(14),
+                        icon: const Icon(
+                          Icons.history_rounded,
+                          color: Color(0xFF6A3DFF),
+                        ),
+                        onPressed: _openHistoryScreen,
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 14),
+                    // Get Rated button squeezed to the right
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _onGetRated,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF6A3DFF),
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          elevation: 6,
+                        ),
+                        child: const Text(
+                          'Get Rated !',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
