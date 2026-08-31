@@ -125,31 +125,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 2),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: Text(
-                  '${_selectedCategory.emoji}  ${_selectedCategory.label}',
-                  key: ValueKey(_selectedCategory.id),
-                  style: const TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white70,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Tap below to see all categories.',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
-                  color: Colors.white,
-                ),
-              ),
               const SizedBox(height: 6),
               SizedBox(
-                height: 60,
+                height: 50,
                 child: AnimatedBuilder(
                   animation: _pageController,
                   builder: (context, _) {
@@ -233,7 +211,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
               ),
-
+              SizedBox(height: 11),
+              const Text(
+                'Tap above to see all categories.',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.white,
+                ),
+              ),
               Expanded(
                 child: Center(
                   child: AnimatedSwitcher(

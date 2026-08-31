@@ -14,9 +14,28 @@ class AIRatingResult {
   AIRatingResult({required this.rating, required this.remarks});
 
   factory AIRatingResult.fromJson(Map<String, dynamic> json) {
+    double parsedRating = 7.0;
+    if (json.containsKey('rating')) {
+      final r = json['rating'];
+      if (r is num) {
+        parsedRating = r.toDouble();
+      } else if (r is String) {
+        parsedRating = double.tryParse(r) ?? 7.0;
+      }
+    }
+
+    String parsedRemarks = 'Solid overall!';
+    if (json.containsKey('remarks') && json['remarks'] != null) {
+      parsedRemarks = json['remarks'].toString();
+    } else if (json.containsKey('remark') && json['remark'] != null) {
+      parsedRemarks = json['remark'].toString();
+    } else if (json.containsKey('review') && json['review'] != null) {
+      parsedRemarks = json['review'].toString();
+    }
+
     return AIRatingResult(
-      rating: (json['rating'] as num).toDouble(),
-      remarks: json['remarks'] as String,
+      rating: parsedRating,
+      remarks: parsedRemarks,
     );
   }
 }
@@ -88,11 +107,14 @@ class AIRatingService {
             errorString.contains('resourceexhausted') ||
             errorString.contains('quota') ||
             errorString.contains('rate limit');
+        bool isTimeout =
+            errorString.contains('timed out') ||
+            errorString.contains('timeout');
 
-        if (isRateLimit && attempt < maxRetries) {
+        if ((isRateLimit || isTimeout) && attempt < maxRetries) {
           final waitSeconds = 2 * attempt;
           debugPrint(
-            '⏳ Rate limit hit (429/TPM). Waiting ${waitSeconds}s before retrying attempt ${attempt + 1} of $maxRetries...',
+            '⏳ ${isTimeout ? "Timeout" : "Rate limit"} hit on attempt $attempt. Waiting ${waitSeconds}s before retrying...',
           );
           await Future.delayed(Duration(seconds: waitSeconds));
         } else {
@@ -108,7 +130,13 @@ class AIRatingService {
     File imageFile,
     String categoryLabel,
   ) async {
-    final model = GenerativeModel(model: 'gemini-3.6-flash', apiKey: _apiKey);
+    final model = GenerativeModel(
+      model: 'gemini-3.6-flash',
+      apiKey: _apiKey,
+      generationConfig: GenerationConfig(
+        responseMimeType: 'application/json',
+      ),
+    );
 
     final compressedBytes = await _compressImage(imageFile);
     debugPrint(
@@ -117,7 +145,7 @@ class AIRatingService {
 
     final content = [
       Content.multi([
-        DataPart('image/jpeg', compressedBytes),
+        DataPart('image/png', compressedBytes),
         TextPart(
           'Rate this "$categoryLabel" photo on a scale of 1.0 to 10.0. '
           'Be a funny, witty Gen-Z critic, specific about what you see in the photo, and use emojis. '
@@ -131,9 +159,9 @@ class AIRatingService {
     final response = await model
         .generateContent(content)
         .timeout(
-          const Duration(seconds: 20),
+          const Duration(seconds: 45),
           onTimeout: () {
-            throw Exception('Gemini API request timed out (20s).');
+            throw Exception('Gemini API request timed out (45s).');
           },
         );
     var text = response.text;
@@ -144,12 +172,9 @@ class AIRatingService {
       throw Exception('Gemini returned an empty response.');
     }
     text = text.trim();
-    if (text.startsWith('```')) {
-      text = text.replaceFirst(RegExp(r'^```(json)?'), '');
-      if (text.endsWith('```')) {
-        text = text.substring(0, text.length - 3);
-      }
-      text = text.trim();
+    final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(text);
+    if (jsonMatch != null) {
+      text = jsonMatch.group(0)!;
     }
 
     final jsonResponse = jsonDecode(text) as Map<String, dynamic>;
