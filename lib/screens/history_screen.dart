@@ -1,5 +1,7 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+
 import '../models/rating_history_item.dart';
 import '../services/database_helper.dart';
 import 'result_screen.dart';
@@ -64,10 +66,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           content: Text(
             'Are you sure you want to delete this ${item.category.label} card (${item.rating.toStringAsFixed(1)}/10) from your history?',
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.black87,
-            ),
+            style: const TextStyle(fontSize: 14, color: Colors.black87),
           ),
           actions: [
             TextButton(
@@ -136,16 +135,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                     const Expanded(
-                      child: Center(
-                        child: Text(
-                          'RATING HISTORY',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2,
-                            color: Colors.white,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'RATING HISTORY',
+                            style: TextStyle(
+                              fontSize: 27,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 2,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Long press to delete any card',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 48), // Balance back button
@@ -160,9 +171,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                        ),
+                        child: CircularProgressIndicator(color: Colors.white),
                       );
                     }
 
@@ -278,17 +287,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         fit: BoxFit.cover,
                                         cacheWidth: 200,
                                         cacheHeight: 200,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return Container(
-                                            width: 76,
-                                            height: 76,
-                                            color: Colors.grey.shade300,
-                                            child: const Icon(
-                                              Icons.broken_image_rounded,
-                                              color: Colors.grey,
-                                            ),
-                                          );
-                                        },
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                              return Container(
+                                                width: 76,
+                                                height: 76,
+                                                color: Colors.grey.shade300,
+                                                child: const Icon(
+                                                  Icons.broken_image_rounded,
+                                                  color: Colors.grey,
+                                                ),
+                                              );
+                                            },
                                       ),
                                     ),
                                     const SizedBox(width: 14),
@@ -306,19 +316,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                               // Category Tag
                                               Flexible(
                                                 child: Container(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 4,
-                                                  ),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
                                                   decoration: BoxDecoration(
                                                     color: const Color(
                                                       0xFF6A3DFF,
                                                     ).withValues(alpha: 0.1),
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                      8,
-                                                    ),
+                                                          8,
+                                                        ),
                                                   ),
                                                   child: Text(
                                                     '${item.category.emoji} ${item.category.label}',
@@ -336,23 +346,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                               const SizedBox(width: 6),
                                               // Rating badge
                                               Container(
-                                                padding: const EdgeInsets
-                                                    .symmetric(
-                                                  horizontal: 10,
-                                                  vertical: 4,
-                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 4,
+                                                    ),
                                                 decoration: BoxDecoration(
                                                   gradient:
                                                       const LinearGradient(
-                                                    colors: [
-                                                      Color(0xFFFF6FD8),
-                                                      Color(0xFF6A3DFF),
-                                                    ],
-                                                  ),
+                                                        colors: [
+                                                          Color(0xFFFF6FD8),
+                                                          Color(0xFF6A3DFF),
+                                                        ],
+                                                      ),
                                                   borderRadius:
-                                                      BorderRadius.circular(
-                                                    10,
-                                                  ),
+                                                      BorderRadius.circular(10),
                                                 ),
                                                 child: Text(
                                                   '${item.rating.toStringAsFixed(1)} / 10',

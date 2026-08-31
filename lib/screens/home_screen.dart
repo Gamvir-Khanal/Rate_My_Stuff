@@ -27,9 +27,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _selectedIndex = ratingCategories.indexOf(defaultRatingCategory);
+    final initialPage = (1000 * ratingCategories.length) + _selectedIndex;
     _pageController = PageController(
       viewportFraction: 0.34,
-      initialPage: _selectedIndex,
+      initialPage: initialPage,
     );
     _previewRating = dummyRatings[Random().nextInt(dummyRatings.length)];
     _previewTimer = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -67,9 +68,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final newIndex = ratingCategories.indexWhere((c) => c.id == result);
     if (newIndex == -1) return;
 
+    final currentPage =
+        _pageController.hasClients && _pageController.page != null
+        ? _pageController.page!.round()
+        : (1000 * ratingCategories.length) + _selectedIndex;
+    final currentRealIndex = currentPage % ratingCategories.length;
+    final difference = newIndex - currentRealIndex;
+    final targetPage = currentPage + difference;
+
     setState(() => _selectedIndex = newIndex);
     _pageController.animateToPage(
-      newIndex,
+      targetPage,
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeOutCubic,
     );
@@ -87,9 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openHistoryScreen() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const HistoryScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const HistoryScreen()),
     );
   }
 
@@ -133,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Tap below to see all options.',
+                'Tap below to see all categories.',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w400,
@@ -154,19 +161,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     return PageView.builder(
                       controller: _pageController,
-                      itemCount: ratingCategories.length,
                       onPageChanged: (index) {
-                        setState(() => _selectedIndex = index);
+                        final realIndex = index % ratingCategories.length;
+                        setState(() => _selectedIndex = realIndex);
                       },
                       itemBuilder: (context, index) {
-                        final category = ratingCategories[index];
+                        final realIndex = index % ratingCategories.length;
+                        final category = ratingCategories[realIndex];
                         final distance = (currentPage - index).abs();
                         final scale = (1 - (distance * 0.22)).clamp(0.78, 1.0);
                         final opacity = (1 - (distance * 0.45)).clamp(
                           0.35,
                           1.0,
                         );
-                        final isSelected = index == _selectedIndex;
+                        final isSelected = realIndex == _selectedIndex;
 
                         return Center(
                           child: Opacity(
