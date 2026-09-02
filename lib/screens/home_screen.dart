@@ -251,7 +251,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Row(
                   children: [
-                    // History button at bottom left
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,

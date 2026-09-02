@@ -110,11 +110,16 @@ class AIRatingService {
         bool isTimeout =
             errorString.contains('timed out') ||
             errorString.contains('timeout');
+        bool isUnavailable =
+            errorString.contains('503') ||
+            errorString.contains('unavailable') ||
+            errorString.contains('high demand');
 
-        if ((isRateLimit || isTimeout) && attempt < maxRetries) {
+        if ((isRateLimit || isTimeout || isUnavailable) && attempt < maxRetries) {
           final waitSeconds = 2 * attempt;
+          final reason = isTimeout ? 'Timeout' : isUnavailable ? 'Server unavailable (503)' : 'Rate limit';
           debugPrint(
-            '⏳ ${isTimeout ? "Timeout" : "Rate limit"} hit on attempt $attempt. Waiting ${waitSeconds}s before retrying...',
+            '⏳ $reason hit on attempt $attempt. Waiting ${waitSeconds}s before retrying...',
           );
           await Future.delayed(Duration(seconds: waitSeconds));
         } else {

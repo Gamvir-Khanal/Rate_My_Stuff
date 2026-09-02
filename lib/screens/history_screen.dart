@@ -149,7 +149,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ),
                           SizedBox(height: 2),
                           Text(
-                            'Long press to delete any card',
+                            'Swipe left or long press to delete',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w400,
@@ -242,6 +242,73 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               size: 26,
                             ),
                           ),
+                          confirmDismiss: (_) async {
+                            final bool? confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (BuildContext dialogContext) {
+                                return AlertDialog(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  title: Row(
+                                    children: const [
+                                      Icon(
+                                        Icons.delete_forever_rounded,
+                                        color: Colors.redAccent,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Delete Rating?',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 18,
+                                          color: Color(0xFF2D1B4E),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  content: Text(
+                                    'Are you sure you want to delete this ${item.category.label} card (${item.rating.toStringAsFixed(1)}/10) from your history?',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(dialogContext).pop(false),
+                                      child: const Text(
+                                        'Cancel',
+                                        style: TextStyle(
+                                          color: Colors.grey,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () =>
+                                          Navigator.of(dialogContext).pop(true),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.redAccent,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Delete',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                            return confirm == true;
+                          },
                           onDismissed: (_) => _deleteItem(item),
                           child: Container(
                             margin: const EdgeInsets.symmetric(vertical: 6),
