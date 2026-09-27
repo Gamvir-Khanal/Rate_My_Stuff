@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/rating_history_item.dart';
 import '../services/database_helper.dart';
+import '../widgets/encrypted_image_widget.dart';
 import 'result_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -347,8 +348,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     // Thumbnail image
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(12),
-                                      child: Image.file(
-                                        file,
+                                      child: EncryptedImageWidget(
+                                        imageFile: file,
                                         width: 76,
                                         height: 76,
                                         fit: BoxFit.cover,

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'encrypted_image_widget.dart';
 
 class RealRatingCard extends StatelessWidget {
   final File imageFile;
@@ -38,8 +39,8 @@ class RealRatingCard extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(24),
                 ),
-                child: Image.file(
-                  imageFile,
+                child: EncryptedImageWidget(
+                  imageFile: imageFile,
                   height: MediaQuery.of(context).size.height * 0.44,
                   width: double.infinity,
                   fit: BoxFit.cover,
