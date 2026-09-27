@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import '../models/rating_category.dart';
+import '../services/rate_limit_service.dart';
 import 'scanning_screen.dart';
 
 class CameraCaptureScreen extends StatefulWidget {
@@ -128,6 +129,9 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_isCountingDown) return;
 
+    final allowed = await RateLimitService.instance.checkAndEnforceLimit(context);
+    if (!allowed) return;
+
     if (_timerSeconds != null && _timerSeconds! > 0) {
       setState(() {
         _isCountingDown = true;
@@ -180,6 +184,9 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   }
 
   Future<void> _pickFromGallery() async {
+    final allowed = await RateLimitService.instance.checkAndEnforceLimit(context);
+    if (!allowed) return;
+
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;

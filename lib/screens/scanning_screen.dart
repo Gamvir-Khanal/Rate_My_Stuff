@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/rating_category.dart';
 import '../services/ai_rating_service.dart';
+import '../services/rate_limit_service.dart';
 import 'result_screen.dart';
 
 class ScanningScreen extends StatefulWidget {
@@ -65,6 +66,7 @@ class _ScanningScreenState extends State<ScanningScreen>
       final result = await AIRatingService()
           .rateImage(widget.imageFile, widget.category.label);
       if (!mounted) return;
+      await RateLimitService.instance.recordScan();
       setState(() {
         _aiDone = true;
         _result = result;
