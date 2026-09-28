@@ -30,7 +30,10 @@ class EncryptedImageWidget extends StatefulWidget {
 }
 
 class _EncryptedImageWidgetState extends State<EncryptedImageWidget> {
-  late Future<Uint8List?> _imageBytesFuture;
+  static final Map<String, Uint8List> _memoryCache = {};
+
+  Uint8List? _cachedBytes;
+  Future<Uint8List?>? _imageBytesFuture;
 
   @override
   void initState() {
@@ -47,34 +50,71 @@ class _EncryptedImageWidgetState extends State<EncryptedImageWidget> {
   }
 
   void _loadImage() {
-    _imageBytesFuture = _getDecryptedOrRawBytes(widget.imageFile);
+    final path = widget.imageFile.path;
+    if (_memoryCache.containsKey(path)) {
+      _cachedBytes = _memoryCache[path];
+      _imageBytesFuture = null;
+    } else {
+      _cachedBytes = null;
+      _imageBytesFuture = _getDecryptedOrRawBytes(widget.imageFile);
+    }
   }
 
   static Future<Uint8List?> _getDecryptedOrRawBytes(File file) async {
+    final path = file.path;
+    if (_memoryCache.containsKey(path)) {
+      return _memoryCache[path];
+    }
+
     if (!await file.exists()) {
       return null;
     }
 
-    final path = file.path;
+    Uint8List? bytes;
     if (path.endsWith('.enc')) {
       try {
-        return await EncryptionService.instance.readAndDecryptFile(path);
+        bytes = await EncryptionService.instance.readAndDecryptFile(path);
       } catch (e) {
         debugPrint('⚠️ Error decrypting image file $path: $e');
         return null;
       }
     } else {
       try {
-        return await file.readAsBytes();
+        bytes = await file.readAsBytes();
       } catch (e) {
         debugPrint('⚠️ Error reading plain image file $path: $e');
         return null;
       }
     }
+
+    if (bytes != null) {
+      if (_memoryCache.length > 60) {
+        _memoryCache.remove(_memoryCache.keys.first);
+      }
+      _memoryCache[path] = bytes;
+    }
+
+    return bytes;
+  }
+
+  Widget _buildImage(Uint8List bytes) {
+    return Image.memory(
+      bytes,
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      cacheWidth: widget.cacheWidth,
+      cacheHeight: widget.cacheHeight,
+      errorBuilder: widget.errorBuilder,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_cachedBytes != null) {
+      return _buildImage(_cachedBytes!);
+    }
+
     return FutureBuilder<Uint8List?>(
       future: _imageBytesFuture,
       builder: (context, snapshot) {
@@ -110,16 +150,7 @@ class _EncryptedImageWidgetState extends State<EncryptedImageWidget> {
           );
         }
 
-        final bytes = snapshot.data!;
-        return Image.memory(
-          bytes,
-          width: widget.width,
-          height: widget.height,
-          fit: widget.fit,
-          cacheWidth: widget.cacheWidth,
-          cacheHeight: widget.cacheHeight,
-          errorBuilder: widget.errorBuilder,
-        );
+        return _buildImage(snapshot.data!);
       },
     );
   }

@@ -6,7 +6,6 @@ import '../models/rating_category.dart';
 import '../models/scan_error.dart';
 import '../services/ai_rating_service.dart';
 import '../services/rate_limit_service.dart';
-import 'result_screen.dart';
 
 class ScanningScreen extends StatefulWidget {
   final File imageFile;
@@ -28,7 +27,6 @@ class _ScanningScreenState extends State<ScanningScreen>
   late final Animation<double> _scanAnimation;
 
   bool _aiDone = false;
-  AIRatingResult? _result;
 
   @override
   void initState() {
@@ -70,33 +68,19 @@ class _ScanningScreenState extends State<ScanningScreen>
       await RateLimitService.instance.recordScan();
       setState(() {
         _aiDone = true;
-        _result = result;
       });
       _animationController.stop();
-      _animationController.forward().then((_) => _navigateToResult());
+      // Small delay so the user sees the ✓ status before we leave
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (!mounted) return;
+      Navigator.of(context).pop(result); // pop with AIRatingResult
     } catch (e) {
       debugPrint('❌ AI rating failed: $e');
       if (!mounted) return;
       _animationController.stop();
       final scanError = ScanError.fromException(e);
-      Navigator.of(context).pop(scanError);
+      Navigator.of(context).pop(scanError); // pop with ScanError
     }
-  }
-
-  void _navigateToResult() {
-    if (!mounted || _result == null) return;
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ResultScreen(
-          imageFile: widget.imageFile,
-          rating: _result!.rating,
-          remark: _result!.remarks,
-          category: widget.category,
-        ),
-      ),
-    );
   }
 
   @override

@@ -8,10 +8,17 @@ class RateLimitService {
   final _secureStorage = const FlutterSecureStorage();
   
   /// Maximum number of AI rating API calls allowed per calendar day.
-  static const int maxDailyScans = 5;
+  static const int maxDailyScans = 50;
 
   static const String _countKey = 'rate_limit_scan_count';
   static const String _dateKey = 'rate_limit_last_date';
+
+  int? _cachedCount;
+  String? _cachedDate;
+
+  /// Real-time notifier for the remaining scans today
+  final ValueNotifier<int> remainingScansNotifier =
+      ValueNotifier<int>(maxDailyScans);
 
   /// Format current date as YYYY-MM-DD
   String _todayDateString() {
@@ -19,20 +26,39 @@ class RateLimitService {
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
+  /// Refreshes and notifies listeners of current quota
+  Future<int> syncRemaining() async {
+    final remaining = await getRemainingScansToday();
+    remainingScansNotifier.value = remaining;
+    return remaining;
+  }
+
   /// Gets the number of scans used today. Resets count if it's a new day.
   Future<int> getUsedScansToday() async {
     final today = _todayDateString();
+    if (_cachedDate == today && _cachedCount != null) {
+      return _cachedCount!;
+    }
+
     final storedDate = await _secureStorage.read(key: _dateKey);
 
     if (storedDate != today) {
       // New day: reset counter to 0
       await _secureStorage.write(key: _dateKey, value: today);
       await _secureStorage.write(key: _countKey, value: '0');
+      _cachedDate = today;
+      _cachedCount = 0;
+      remainingScansNotifier.value = maxDailyScans;
       return 0;
     }
 
     final countStr = await _secureStorage.read(key: _countKey);
-    return int.tryParse(countStr ?? '0') ?? 0;
+    final count = int.tryParse(countStr ?? '0') ?? 0;
+    _cachedDate = today;
+    _cachedCount = count;
+    final remaining = maxDailyScans - count;
+    remainingScansNotifier.value = remaining < 0 ? 0 : remaining;
+    return count;
   }
 
   /// Returns remaining scans available for today.
@@ -52,6 +78,9 @@ class RateLimitService {
   Future<void> recordScan() async {
     final used = await getUsedScansToday();
     final newCount = used + 1;
+    _cachedCount = newCount;
+    final remaining = maxDailyScans - newCount;
+    remainingScansNotifier.value = remaining < 0 ? 0 : remaining;
     await _secureStorage.write(key: _countKey, value: newCount.toString());
     debugPrint('📊 Recorded API scan. Total used today: $newCount / $maxDailyScans');
   }

@@ -9,7 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/rating_category.dart';
+import '../services/ai_rating_service.dart';
 import '../services/database_helper.dart';
+import '../services/rate_limit_service.dart';
 import '../widgets/real_rating_card.dart';
 import 'camera_capture_screen.dart';
 
@@ -122,7 +124,28 @@ class _ResultScreenState extends State<ResultScreen>
     }
   }
 
-  void _tryAgain() {
+  Future<void> _tryAgain() async {
+    // 1. Quota Pre-Check
+    final canScan =
+        await RateLimitService.instance.checkAndEnforceLimit(context);
+    if (!canScan || !mounted) return;
+
+    // 2. Offline Pre-Check
+    final isOnline = await AIRatingService.hasInternetConnection();
+    if (!mounted) return;
+    if (!isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No internet connection. Please connect before trying again.',
+          ),
+          backgroundColor: Color(0xFFFF5252),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(

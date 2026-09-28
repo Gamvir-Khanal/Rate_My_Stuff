@@ -44,9 +44,8 @@ class AIRatingResult {
 class AIRatingService {
   static int _currentGroqKeyIndex = 0;
 
-  static String get _geminiApiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
   static String get _groqModel =>
-      dotenv.env['GROQ_MODEL'] ?? 'llama-3.2-11b-vision-preview';
+      dotenv.env['GROQ_MODEL'] ?? 'qwen/qwen3.8-27b';
 
   /// Collects all valid, non-placeholder Groq API keys from .env
   static List<String> get _groqApiKeys {
@@ -82,12 +81,71 @@ class AIRatingService {
     return keys;
   }
 
+  /// Collects all valid, non-placeholder Gemini API keys from .env
+  static List<String> get _geminiApiKeys {
+    final List<String> keys = [];
+
+    // 1. Check single/legacy GEMINI_API_KEY
+    final singleKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+    if (singleKey.isNotEmpty &&
+        !singleKey.contains('YOUR_') &&
+        !keys.contains(singleKey)) {
+      keys.add(singleKey);
+    }
+
+    // 2. Check GEMINI_API_KEY_1 through GEMINI_API_KEY_5
+    for (int i = 1; i <= 5; i++) {
+      final k = dotenv.env['GEMINI_API_KEY_$i'] ?? '';
+      if (k.isNotEmpty && !k.contains('YOUR_') && !keys.contains(k)) {
+        keys.add(k);
+      }
+    }
+
+    return keys;
+  }
+
   static bool get isGroqConfigured => _groqApiKeys.isNotEmpty;
 
-  static bool get isGeminiConfigured =>
-      _geminiApiKey.isNotEmpty && !_geminiApiKey.contains('YOUR_');
+  static bool get isGeminiConfigured => _geminiApiKeys.isNotEmpty;
 
   static bool get isKeyConfigured => isGroqConfigured || isGeminiConfigured;
+
+  /// Tracks cooldown timestamps for throttled (429) or invalid API keys
+  static final Map<String, DateTime> _keyCooldowns = {};
+
+  /// Checks if a key is currently on cooldown
+  static bool isKeyOnCooldown(String apiKey) {
+    final cooldownUntil = _keyCooldowns[apiKey];
+    if (cooldownUntil == null) return false;
+    if (DateTime.now().isAfter(cooldownUntil)) {
+      _keyCooldowns.remove(apiKey);
+      return false;
+    }
+    return true;
+  }
+
+  /// Sets a cooldown for a throttled/errored key
+  static void markKeyCooldown(String apiKey, Duration duration) {
+    _keyCooldowns[apiKey] = DateTime.now().add(duration);
+  }
+
+  /// Quick offline check (completes in < 2 seconds)
+  static Future<bool> hasInternetConnection() async {
+    try {
+      final lookup = await InternetAddress.lookup('api.groq.com')
+          .timeout(const Duration(milliseconds: 2000));
+      return lookup.isNotEmpty && lookup[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      try {
+        final fallbackLookup = await InternetAddress.lookup('google.com')
+            .timeout(const Duration(milliseconds: 1500));
+        return fallbackLookup.isNotEmpty &&
+            fallbackLookup[0].rawAddress.isNotEmpty;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
 
   Future<Uint8List> _compressImage(File file, {int maxDim = 600}) async {
     final bytes = await file.readAsBytes();
@@ -132,6 +190,13 @@ class AIRatingService {
       throw Exception('AI API key is not configured.');
     }
 
+    // ── Instant Offline Pre-check ─────────────────────────────────────────
+    final isOnline = await hasInternetConnection();
+    if (!isOnline) {
+      debugPrint('❌ Instant offline detection: device not connected.');
+      throw Exception('No internet connection. Please check your network and try again.');
+    }
+
     final groqKeys = _groqApiKeys;
 
     // ── 1. Try Groq Keys in round-robin sequence ────────────────────────
@@ -148,6 +213,13 @@ class AIRatingService {
         final keyIndex = (startIndex + i) % groqKeys.length;
         final apiKey = groqKeys[keyIndex];
         final maskedKey = apiKey.length > 8 ? apiKey.substring(0, 8) : apiKey;
+
+        if (isKeyOnCooldown(apiKey)) {
+          debugPrint(
+            '⏳ Groq Key #${keyIndex + 1} ($maskedKey...) is on cooldown. Skipping...',
+          );
+          continue;
+        }
 
         try {
           debugPrint(
@@ -167,23 +239,53 @@ class AIRatingService {
       }
 
       debugPrint(
-        '⚠️ All ${groqKeys.length} Groq API keys failed. Falling back to Gemini...',
+        '⚠️ All ${groqKeys.length} Groq API keys failed or on cooldown. Falling back to Gemini...',
       );
     }
 
     // ── 2. Fallback to Gemini if all Groq keys fail or none configured ─
-    if (isGeminiConfigured) {
-      debugPrint('🔑 Calling Gemini fallback for "$categoryLabel"...');
-      try {
-        return await _executeGeminiRateImageCall(imageFile, categoryLabel);
-      } catch (e) {
-        debugPrint('❌ Gemini fallback failed: $e');
-        rethrow;
+    final geminiKeys = _geminiApiKeys;
+    if (geminiKeys.isNotEmpty) {
+      debugPrint(
+        '🔑 Calling Gemini fallback sequence (${geminiKeys.length} key(s) available) for "$categoryLabel"...',
+      );
+      dynamic lastGeminiError;
+
+      for (int i = 0; i < geminiKeys.length; i++) {
+        final apiKey = geminiKeys[i];
+        final maskedKey = apiKey.length > 8 ? apiKey.substring(0, 8) : apiKey;
+
+        if (isKeyOnCooldown(apiKey)) {
+          debugPrint(
+            '⏳ Gemini Key #${i + 1} ($maskedKey...) is on cooldown. Skipping...',
+          );
+          continue;
+        }
+
+        try {
+          debugPrint(
+            '🔑 Attempting Gemini Key #${i + 1} ($maskedKey...)...',
+          );
+          return await _executeGeminiRateImageCall(
+            imageFile,
+            categoryLabel,
+            apiKey,
+          );
+        } catch (e) {
+          debugPrint(
+            '⚠️ Gemini Key #${i + 1} failed ($e). Silently trying next Gemini key...',
+          );
+          lastGeminiError = e;
+        }
       }
+
+      debugPrint('❌ All ${geminiKeys.length} Gemini fallback key(s) failed.');
+      throw lastGeminiError ??
+          Exception('All Gemini API keys failed to rate the image.');
     }
 
     throw Exception(
-      'All Groq API keys failed and Gemini API key is not configured.',
+      'All Groq API keys failed and no valid Gemini API keys are configured.',
     );
   }
 
@@ -247,8 +349,20 @@ class AIRatingService {
 
     if (response.statusCode != 200) {
       debugPrint('❌ Groq API error response (${response.statusCode}): ${response.body}');
+      if (response.statusCode == 429) {
+        // Cooldown for 60 seconds on rate limit
+        markKeyCooldown(apiKey, const Duration(seconds: 60));
+        debugPrint('⏳ Marked Groq key on cooldown for 60s due to 429 rate limit.');
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Cooldown for 1 hour on invalid/unauthorized key
+        markKeyCooldown(apiKey, const Duration(hours: 1));
+        debugPrint('⏳ Marked Groq key on cooldown for 1h due to auth error (${response.statusCode}).');
+      }
       throw Exception('Groq API returned error status ${response.statusCode}: ${response.body}');
     }
+
+    // Success! Clear any cooldown for this key
+    _keyCooldowns.remove(apiKey);
 
     final responseJson = jsonDecode(response.body) as Map<String, dynamic>;
     final choices = responseJson['choices'] as List<dynamic>?;
@@ -276,10 +390,11 @@ class AIRatingService {
   Future<AIRatingResult> _executeGeminiRateImageCall(
     File imageFile,
     String categoryLabel,
+    String apiKey,
   ) async {
     final model = GenerativeModel(
-      model: 'gemini-3.6-flash',
-      apiKey: _geminiApiKey,
+      model: 'gemini-2.5-flash',
+      apiKey: apiKey,
       generationConfig: GenerationConfig(
         responseMimeType: 'application/json',
       ),
@@ -303,28 +418,42 @@ class AIRatingService {
       ]),
     ];
 
-    final response = await model
-        .generateContent(content)
-        .timeout(
-          const Duration(seconds: 45),
-          onTimeout: () {
-            throw Exception('Gemini API request timed out (45s).');
-          },
-        );
-    var text = response.text;
+    try {
+      final response = await model
+          .generateContent(content)
+          .timeout(
+            const Duration(seconds: 45),
+            onTimeout: () {
+              throw Exception('Gemini API request timed out (45s).');
+            },
+          );
+      var text = response.text;
 
-    debugPrint('✅ Gemini raw response: $text');
+      debugPrint('✅ Gemini raw response: $text');
 
-    if (text == null || text.trim().isEmpty) {
-      throw Exception('Gemini returned an empty response.');
+      if (text == null || text.trim().isEmpty) {
+        throw Exception('Gemini returned an empty response.');
+      }
+      text = text.trim();
+      final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(text);
+      if (jsonMatch != null) {
+        text = jsonMatch.group(0)!;
+      }
+
+      // Success! Clear any cooldown for this Gemini key
+      _keyCooldowns.remove(apiKey);
+
+      final jsonResponse = jsonDecode(text) as Map<String, dynamic>;
+      return AIRatingResult.fromJson(jsonResponse);
+    } catch (e) {
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('429') ||
+          errStr.contains('quota') ||
+          errStr.contains('resourceexhausted')) {
+        markKeyCooldown(apiKey, const Duration(seconds: 60));
+        debugPrint('⏳ Marked Gemini key on cooldown for 60s due to rate limit.');
+      }
+      rethrow;
     }
-    text = text.trim();
-    final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(text);
-    if (jsonMatch != null) {
-      text = jsonMatch.group(0)!;
-    }
-
-    final jsonResponse = jsonDecode(text) as Map<String, dynamic>;
-    return AIRatingResult.fromJson(jsonResponse);
   }
 }

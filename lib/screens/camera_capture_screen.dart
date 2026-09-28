@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import '../models/rating_category.dart';
+import '../services/ai_rating_service.dart';
 import '../services/rate_limit_service.dart';
+import '../models/scan_error.dart';
+import 'result_screen.dart';
 import 'scanning_screen.dart';
 
 class CameraCaptureScreen extends StatefulWidget {
@@ -205,8 +208,27 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
         ),
       ),
     );
-    if (mounted) {
+    if (!mounted) return;
+
+    if (result is AIRatingResult) {
+      // Success: push ResultScreen, replacing camera in the stack
+      await Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultScreen(
+            imageFile: imageFile,
+            rating: result.rating,
+            remark: result.remarks,
+            category: widget.category,
+          ),
+        ),
+      );
+    } else if (result is ScanError) {
+      // Error: pop back to home, passing error for the banner
       Navigator.of(context).pop(result);
+    } else {
+      // User cancelled scanning (back button)
+      // Stay on camera screen — do nothing
     }
   }
 

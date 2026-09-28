@@ -6,9 +6,12 @@ import 'package:flutter/material.dart';
 import '../models/dummy_rating.dart';
 import '../models/rating_category.dart';
 import '../models/scan_error.dart';
+import '../services/ai_rating_service.dart';
+import '../services/rate_limit_service.dart';
 import '../widgets/floating_rating_card.dart';
 import 'camera_capture_screen.dart';
 import 'category_picker_sheet.dart';
+import '../services/database_helper.dart';
 import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -29,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    RateLimitService.instance.syncRemaining();
     _selectedIndex = ratingCategories.indexOf(defaultRatingCategory);
     final initialPage = (1000 * ratingCategories.length) + _selectedIndex;
     _pageController = PageController(
@@ -89,12 +93,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onGetRated() async {
+    // 1. Quota Pre-Check
+    final canScan =
+        await RateLimitService.instance.checkAndEnforceLimit(context);
+    if (!canScan || !mounted) return;
+
+    // 2. Instant Offline Pre-Check
+    final isOnline = await AIRatingService.hasInternetConnection();
+    if (!mounted) return;
+    if (!isOnline) {
+      _showError(const ScanError(
+        title: 'No Internet Connection',
+        message: 'Please connect to Wi-Fi or mobile data before getting rated.',
+        icon: Icons.wifi_off_rounded,
+      ));
+      return;
+    }
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => CameraCaptureScreen(category: _selectedCategory),
       ),
     );
+
+    // Refresh quota badge on return
+    await RateLimitService.instance.syncRemaining();
 
     if (result is ScanError && mounted) {
       _showError(result);
@@ -116,10 +140,34 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _openHistoryScreen() {
+  Future<void> _openHistoryScreen() async {
+    // Pre-fetch history data while the transition is happening so the list
+    // is already populated the moment the screen appears.
+    final prefetched = await DatabaseHelper.instance.getRatings();
+    if (!mounted) return;
+
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const HistoryScreen()),
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 280),
+        pageBuilder: (_, __, ___) =>
+            HistoryScreen(initialData: prefetched),
+        transitionsBuilder: (_, animation, __, child) {
+          final fadeTween = Tween<double>(begin: 0.0, end: 1.0)
+              .chain(CurveTween(curve: Curves.easeOut));
+          final slideTween =
+              Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+                  .chain(CurveTween(curve: Curves.easeOut));
+          return FadeTransition(
+            opacity: animation.drive(fadeTween),
+            child: SlideTransition(
+              position: animation.drive(slideTween),
+              child: child,
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -346,10 +394,57 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
+                  // Daily Scans Counter Badge
+                  ValueListenableBuilder<int>(
+                    valueListenable:
+                        RateLimitService.instance.remainingScansNotifier,
+                    builder: (context, remaining, _) {
+                      final isLow = remaining <= 5;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isLow
+                                ? Colors.amberAccent.withValues(alpha: 0.8)
+                                : Colors.white.withValues(alpha: 0.35),
+                            width: 1.2,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.bolt_rounded,
+                              size: 16,
+                              color: isLow ? Colors.amberAccent : Colors.white,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$remaining / ${RateLimitService.maxDailyScans} scans left today',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color:
+                                    isLow ? Colors.amberAccent : Colors.white,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
-                      vertical: 28,
+                      vertical: 20,
                     ),
                     child: Row(
                       children: [

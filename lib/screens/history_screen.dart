@@ -2,13 +2,28 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../models/rating_category.dart';
 import '../models/rating_history_item.dart';
 import '../services/database_helper.dart';
 import '../widgets/encrypted_image_widget.dart';
 import 'result_screen.dart';
 
+enum HistorySortOption {
+  newestFirst('Newest First', Icons.arrow_downward_rounded),
+  oldestFirst('Oldest First', Icons.arrow_upward_rounded),
+  highestScore('Highest Score', Icons.star_rounded),
+  lowestScore('Lowest Score', Icons.star_border_rounded);
+
+  final String label;
+  final IconData icon;
+  const HistorySortOption(this.label, this.icon);
+}
+
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  /// Optional pre-fetched data from the caller to avoid the initial spinner.
+  final List<RatingHistoryItem>? initialData;
+
+  const HistoryScreen({super.key, this.initialData});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -16,23 +31,40 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   late Future<List<RatingHistoryItem>> _historyFuture;
+  List<RatingHistoryItem>? _resolvedData;
+  String? _selectedCategoryFilter;
+  HistorySortOption _sortOption = HistorySortOption.newestFirst;
 
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    _loadHistory(prefetched: widget.initialData);
   }
 
-  void _loadHistory() {
-    setState(() {
-      _historyFuture = DatabaseHelper.instance.getRatings();
-    });
+  void _loadHistory({List<RatingHistoryItem>? prefetched}) {
+    if (prefetched != null) {
+      // Use pre-fetched data immediately — no spinner needed
+      _resolvedData = prefetched;
+      _historyFuture = Future.value(prefetched);
+    } else {
+      setState(() {
+        _resolvedData = null;
+        _historyFuture = DatabaseHelper.instance.getRatings();
+      });
+    }
   }
 
   Future<void> _deleteItem(RatingHistoryItem item) async {
     if (item.id == null) return;
     await DatabaseHelper.instance.deleteRating(item.id!);
-    _loadHistory();
+    // After delete, always reload fresh from DB
+    final fresh = await DatabaseHelper.instance.getRatings();
+    if (mounted) {
+      setState(() {
+        _resolvedData = fresh;
+        _historyFuture = Future.value(fresh);
+      });
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -160,17 +192,72 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 48), // Balance back button
+                    PopupMenuButton<HistorySortOption>(
+                      icon: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.sort_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      tooltip: 'Sort Ratings',
+                      color: const Color(0xFF1E1035),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      initialValue: _sortOption,
+                      onSelected: (option) {
+                        setState(() => _sortOption = option);
+                      },
+                      itemBuilder: (context) => HistorySortOption.values.map((option) {
+                        final isSelected = option == _sortOption;
+                        return PopupMenuItem(
+                          value: option,
+                          child: Row(
+                            children: [
+                              Icon(
+                                option.icon,
+                                size: 18,
+                                color: isSelected
+                                    ? const Color(0xFFFF6FD8)
+                                    : Colors.white70,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                option.label,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w800
+                                      : FontWeight.w500,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ],
                 ),
               ),
 
-              // History items list
+              // Category Filter Chips + History list — driven by a single
+              // FutureBuilder so chips only show categories that have data.
               Expanded(
                 child: FutureBuilder<List<RatingHistoryItem>>(
                   future: _historyFuture,
+                  initialData: _resolvedData,
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        snapshot.data == null) {
                       return const Center(
                         child: CircularProgressIndicator(color: Colors.white),
                       );
@@ -185,9 +272,106 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       );
                     }
 
-                    final items = snapshot.data ?? [];
+                    final allItems = snapshot.data ?? [];
 
-                    if (items.isEmpty) {
+                    // Build the set of category IDs that actually have items.
+                    final presentCategoryIds =
+                        allItems.map((i) => i.categoryId).toSet();
+
+                    // If the active filter no longer has any items (e.g. after
+                    // a delete), silently reset it to "All".
+                    if (_selectedCategoryFilter != null &&
+                        !presentCategoryIds.contains(_selectedCategoryFilter)) {
+                      // Schedule outside the build frame.
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          setState(() => _selectedCategoryFilter = null);
+                        }
+                      });
+                    }
+
+                    // --- Filter chips (only categories with data) ---
+                    final chips = Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          height: 38,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 14),
+                            children: [
+                              _buildFilterChip(
+                                label: 'All',
+                                emoji: '✨',
+                                isSelected: _selectedCategoryFilter == null,
+                                onTap: () => setState(
+                                    () => _selectedCategoryFilter = null),
+                              ),
+                              // Only show a chip if that category has at least
+                              // one saved rating.
+                              ...ratingCategories
+                                  .where((cat) =>
+                                      presentCategoryIds.contains(cat.id))
+                                  .map((cat) {
+                                return _buildFilterChip(
+                                  label: cat.label,
+                                  emoji: cat.emoji,
+                                  isSelected:
+                                      _selectedCategoryFilter == cat.id,
+                                  onTap: () => setState(
+                                      () => _selectedCategoryFilter = cat.id),
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                    );
+
+                    // --- Empty history (no items at all) ---
+                    if (allItems.isEmpty) {
+                      return Column(
+                        children: [
+                          chips,
+                          Expanded(
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.history_rounded,
+                                    size: 72,
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'No saved ratings yet!',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Take a photo on the home screen to get rated.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    if (allItems.isEmpty) {
                       return Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -219,12 +403,93 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       );
                     }
 
-                    return ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      itemCount: items.length,
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-                        final file = File(item.imagePath);
+                    // 1. Filter items by selected category
+                    var items = List<RatingHistoryItem>.from(allItems);
+                    if (_selectedCategoryFilter != null) {
+                      items = items
+                          .where((i) => i.categoryId == _selectedCategoryFilter)
+                          .toList();
+                    }
+
+                    // 2. Sort items according to selected sort option
+                    switch (_sortOption) {
+                      case HistorySortOption.newestFirst:
+                        items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                        break;
+                      case HistorySortOption.oldestFirst:
+                        items.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+                        break;
+                      case HistorySortOption.highestScore:
+                        items.sort((a, b) => b.rating.compareTo(a.rating));
+                        break;
+                      case HistorySortOption.lowestScore:
+                        items.sort((a, b) => a.rating.compareTo(b.rating));
+                        break;
+                    }
+
+                    if (items.isEmpty) {
+                      final category = ratingCategories.firstWhere(
+                        (c) => c.id == _selectedCategoryFilter,
+                        orElse: () => defaultRatingCategory,
+                      );
+                      return Column(
+                        children: [
+                          chips,
+                          Expanded(
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    category.emoji,
+                                    style: const TextStyle(fontSize: 48),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No ${category.label} ratings found!',
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextButton.icon(
+                                    onPressed: () => setState(
+                                        () => _selectedCategoryFilter = null),
+                                    icon: const Icon(
+                                      Icons.clear_all_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                    label: const Text(
+                                      'View All Categories',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    // Normal list — chips always visible above the list.
+                    return Column(
+                      children: [
+                        chips,
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                            cacheExtent: 600,
+                            itemCount: items.length,
+                            itemBuilder: (context, index) {
+                              final item = items[index];
+                              final file = File(item.imagePath);
 
                         return Dismissible(
                           key: Key('history_item_${item.id}'),
@@ -338,7 +603,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       isFromHistory: true,
                                     ),
                                   ),
-                                ).then((_) => _loadHistory());
+                                ).then((_) async {
+                                  // Reload from DB after returning from detail view
+                                  final fresh =
+                                      await DatabaseHelper.instance
+                                          .getRatings();
+                                  if (mounted) {
+                                    setState(() {
+                                      _resolvedData = fresh;
+                                      _historyFuture = Future.value(fresh);
+                                    });
+                                  }
+                                });
                               },
                               onLongPress: () => _showDeleteConfirmation(item),
                               child: Padding(
@@ -464,8 +740,68 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ),
                         );
                       },
+                          ),
+                        ),
+                      ],
                     );
                   },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required String emoji,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Colors.white
+                : Colors.white.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.35),
+              width: 1.2,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 13)),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? const Color(0xFF6A3DFF)
+                      : Colors.white,
                 ),
               ),
             ],
