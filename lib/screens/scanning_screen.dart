@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/rating_category.dart';
+import '../models/scan_error.dart';
 import '../services/ai_rating_service.dart';
 import '../services/rate_limit_service.dart';
 import 'result_screen.dart';
@@ -77,7 +78,8 @@ class _ScanningScreenState extends State<ScanningScreen>
       debugPrint('❌ AI rating failed: $e');
       if (!mounted) return;
       _animationController.stop();
-      Navigator.of(context).pop();
+      final scanError = ScanError.fromException(e);
+      Navigator.of(context).pop(scanError);
     }
   }
 

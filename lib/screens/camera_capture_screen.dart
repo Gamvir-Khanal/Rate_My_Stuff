@@ -194,9 +194,9 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     _returnImage(File(picked.path));
   }
 
-  void _returnImage(File imageFile) {
+  Future<void> _returnImage(File imageFile) async {
     debugPrint('Image ready: ${imageFile.path}');
-    Navigator.pushReplacement(
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ScanningScreen(
@@ -205,6 +205,9 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
         ),
       ),
     );
+    if (mounted) {
+      Navigator.of(context).pop(result);
+    }
   }
 
   String get _timerLabel {
