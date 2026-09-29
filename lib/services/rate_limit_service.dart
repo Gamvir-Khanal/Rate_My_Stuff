@@ -8,7 +8,7 @@ class RateLimitService {
   final _secureStorage = const FlutterSecureStorage();
   
   /// Maximum number of AI rating API calls allowed per calendar day.
-  static const int maxDailyScans = 50;
+  static const int maxDailyScans = 30;
 
   static const String _countKey = 'rate_limit_scan_count';
   static const String _dateKey = 'rate_limit_last_date';

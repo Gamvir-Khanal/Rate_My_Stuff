@@ -22,7 +22,7 @@ class _HowItWorksCardState extends State<HowItWorksCard>
   static const _steps = [
     _StepData(
       icon: Icons.category_rounded,
-      title: 'Pick a Category From Above',
+      title: 'Pick a Category 👆 \n    Get Rated 👇',
       subtitle: 'Choose what you want rated — food, pets, outfits, and more!',
       gradient: [Color(0xFFFF6FD8), Color(0xFFFF8FA0)],
     ),
