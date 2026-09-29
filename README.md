@@ -8,14 +8,14 @@
 
 - 🤖 **Dual-Engine AI Pipeline**:
   - **Primary**: Multi-key round-robin rotation via **Groq** (`qwen/qwen3.8-27b` vision model).
-  - **Fallback**: Seamless failover to **Google Gemini 2.5 Flash** (`gemini-2.5-flash`).
+  - **Fallback**: Seamless failover to **Google Gemini 2.5 Flash** (`gemini-3.8-flash`).
 - 🎯 **Smart Compliment vs. Roast AI Prompting**:
   - **Top-Tier Compliments**: High-quality, impressive photos receive genuine, glowing praise.
   - **Savage Roasts**: Low-effort or messy photos get hilarious, Gen-Z roasts.
 - 🌐 **Multi-Language Vision Intelligence**:
   - Detects multilingual context or text inside photos and responds in the user's expected language.
 - 📷 **Custom Live Camera & Gallery Picker**:
-  - Features real-time camera preview with aspect ratio locking, flash control, front/back camera toggling, zoom control, and device brightness adjustment.
+  - Features real-time camera preview with aspect ratio locking, flash control, front/back camera toggling, and device brightness adjustment.
 - 🔒 **Encrypted Local Storage & History**:
   - Securely stores rating history and encrypted images on-device using **SQLCipher** and local cryptographic keys.
 - ⚡ **Resiliency & Auto-Cooldown**:
@@ -123,8 +123,3 @@ lib/
 - **Image Protection**: Captured images are encrypted using AES symmetric encryption before being written to disk.
 - **No Third-Party Tracking**: API calls are made directly to official provider endpoints (Groq / Google Cloud) solely for image rating generation.
 
----
-
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
