@@ -1,17 +1,16 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-import '../models/dummy_rating.dart';
 import '../models/rating_category.dart';
 import '../models/scan_error.dart';
 import '../services/ai_rating_service.dart';
+import '../services/database_helper.dart';
 import '../services/rate_limit_service.dart';
-import '../widgets/floating_rating_card.dart';
+import '../widgets/category_spotlight_card.dart';
+import '../widgets/how_it_works_card.dart';
 import 'camera_capture_screen.dart';
 import 'category_picker_sheet.dart';
-import '../services/database_helper.dart';
 import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -21,13 +20,15 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late final PageController _pageController;
+  late final AnimationController _pulseController;
   late int _selectedIndex;
-  late DummyRating _previewRating;
-  Timer? _previewTimer;
   ScanError? _currentError;
   Timer? _errorDismissTimer;
+  bool _hasScans = false;
+  bool _hasCheckedScans = false;
 
   @override
   void initState() {
@@ -39,27 +40,33 @@ class _HomeScreenState extends State<HomeScreen> {
       viewportFraction: 0.34,
       initialPage: initialPage,
     );
-    _previewRating = dummyRatings[Random().nextInt(dummyRatings.length)];
-    _previewTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      setState(() {
-        _previewRating = _nextRandomRating();
-      });
-    });
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
+    _checkForExistingScans();
   }
 
-  DummyRating _nextRandomRating() {
-    if (dummyRatings.length <= 1) return dummyRatings.first;
-    DummyRating next;
-    do {
-      next = dummyRatings[Random().nextInt(dummyRatings.length)];
-    } while (next.imagePath == _previewRating.imagePath);
-    return next;
+  Future<void> _checkForExistingScans() async {
+    try {
+      final ratings = await DatabaseHelper.instance.getRatings();
+      if (mounted) {
+        setState(() {
+          _hasScans = ratings.isNotEmpty;
+          _hasCheckedScans = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _hasCheckedScans = true);
+      }
+    }
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _previewTimer?.cancel();
+    _pulseController.dispose();
     _errorDismissTimer?.cancel();
     super.dispose();
   }
@@ -94,19 +101,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _onGetRated() async {
     // 1. Quota Pre-Check
-    final canScan =
-        await RateLimitService.instance.checkAndEnforceLimit(context);
+    final canScan = await RateLimitService.instance.checkAndEnforceLimit(
+      context,
+    );
     if (!canScan || !mounted) return;
 
     // 2. Instant Offline Pre-Check
     final isOnline = await AIRatingService.hasInternetConnection();
     if (!mounted) return;
     if (!isOnline) {
-      _showError(const ScanError(
-        title: 'No Internet Connection',
-        message: 'Please connect to Wi-Fi or mobile data before getting rated.',
-        icon: Icons.wifi_off_rounded,
-      ));
+      _showError(
+        const ScanError(
+          title: 'No Internet Connection',
+          message:
+              'Please connect to Wi-Fi or mobile data before getting rated.',
+          icon: Icons.wifi_off_rounded,
+        ),
+      );
       return;
     }
 
@@ -119,6 +130,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Refresh quota badge on return
     await RateLimitService.instance.syncRemaining();
+
+    // After returning, re-check scans so we switch from HowItWorks to Spotlight
+    await _checkForExistingScans();
+
+    if (mounted && !_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    }
 
     if (result is ScanError && mounted) {
       _showError(result);
@@ -151,14 +169,16 @@ class _HomeScreenState extends State<HomeScreen> {
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 320),
         reverseTransitionDuration: const Duration(milliseconds: 280),
-        pageBuilder: (_, __, ___) =>
-            HistoryScreen(initialData: prefetched),
+        pageBuilder: (_, __, ___) => HistoryScreen(initialData: prefetched),
         transitionsBuilder: (_, animation, __, child) {
-          final fadeTween = Tween<double>(begin: 0.0, end: 1.0)
-              .chain(CurveTween(curve: Curves.easeOut));
-          final slideTween =
-              Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
-                  .chain(CurveTween(curve: Curves.easeOut));
+          final fadeTween = Tween<double>(
+            begin: 0.0,
+            end: 1.0,
+          ).chain(CurveTween(curve: Curves.easeOut));
+          final slideTween = Tween<Offset>(
+            begin: const Offset(0, 0.06),
+            end: Offset.zero,
+          ).chain(CurveTween(curve: Curves.easeOut));
           return FadeTransition(
             opacity: animation.drive(fadeTween),
             child: SlideTransition(
@@ -199,11 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
               color: const Color(0xFFFF5252).withValues(alpha: 0.18),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              error.icon,
-              color: const Color(0xFFFF5252),
-              size: 24,
-            ),
+            child: Icon(error.icon, color: const Color(0xFFFF5252), size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -298,7 +314,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             final realIndex = index % ratingCategories.length;
                             final category = ratingCategories[realIndex];
                             final distance = (currentPage - index).abs();
-                            final scale = (1 - (distance * 0.22)).clamp(0.78, 1.0);
+                            final scale = (1 - (distance * 0.22)).clamp(
+                              0.78,
+                              1.0,
+                            );
                             final opacity = (1 - (distance * 0.45)).clamp(
                               0.35,
                               1.0,
@@ -320,7 +339,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                       decoration: BoxDecoration(
                                         color: isSelected
                                             ? Colors.white
-                                            : Colors.white.withValues(alpha: 0.18),
+                                            : Colors.white.withValues(
+                                                alpha: 0.18,
+                                              ),
                                         borderRadius: BorderRadius.circular(20),
                                         border: Border.all(
                                           color: Colors.white.withValues(
@@ -334,7 +355,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         children: [
                                           Text(
                                             category.emoji,
-                                            style: const TextStyle(fontSize: 16),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                            ),
                                           ),
                                           const SizedBox(width: 6),
                                           Flexible(
@@ -387,10 +410,27 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           );
                         },
-                        child: FloatingRatingCard(
-                          key: ValueKey(_previewRating.imagePath),
-                          data: _previewRating,
-                        ),
+                        child: !_hasCheckedScans
+                            ? const SizedBox.shrink()
+                            : _hasScans
+                            ? AnimatedBuilder(
+                                key: ValueKey(_selectedCategory.id),
+                                animation: _pulseController,
+                                builder: (context, child) {
+                                  final scale =
+                                      1.0 + (_pulseController.value * 0.05);
+                                  return Transform.scale(
+                                    scale: scale,
+                                    child: child,
+                                  );
+                                },
+                                child: CategorySpotlightCard(
+                                  category: _selectedCategory,
+                                ),
+                              )
+                            : const HowItWorksCard(
+                                key: ValueKey('how_it_works'),
+                              ),
                       ),
                     ),
                   ),
@@ -403,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Container(
                         margin: const EdgeInsets.only(bottom: 2),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
+                          horizontal: 6,
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
@@ -430,8 +470,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
-                                color:
-                                    isLow ? Colors.amberAccent : Colors.white,
+                                color: isLow
+                                    ? Colors.amberAccent
+                                    : Colors.white,
                                 letterSpacing: 0.3,
                               ),
                             ),
@@ -471,14 +512,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         const SizedBox(width: 14),
-                        // Get Rated button squeezed to the right
+                        // Get Rated button
                         Expanded(
                           child: ElevatedButton(
                             onPressed: _onGetRated,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.white,
                               foregroundColor: const Color(0xFF6A3DFF),
-                              padding: const EdgeInsets.symmetric(vertical: 18),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 18,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(30),
                               ),
@@ -512,10 +555,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         begin: const Offset(0, -1.0),
                         end: Offset.zero,
                       ).animate(animation),
-                      child: FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      ),
+                      child: FadeTransition(opacity: animation, child: child),
                     );
                   },
                   child: _currentError != null
