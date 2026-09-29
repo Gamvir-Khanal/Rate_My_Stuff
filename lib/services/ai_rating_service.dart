@@ -34,10 +34,7 @@ class AIRatingResult {
       parsedRemarks = json['review'].toString();
     }
 
-    return AIRatingResult(
-      rating: parsedRating,
-      remarks: parsedRemarks,
-    );
+    return AIRatingResult(rating: parsedRating, remarks: parsedRemarks);
   }
 }
 
@@ -132,13 +129,15 @@ class AIRatingService {
   /// Quick offline check (completes in < 2 seconds)
   static Future<bool> hasInternetConnection() async {
     try {
-      final lookup = await InternetAddress.lookup('api.groq.com')
-          .timeout(const Duration(milliseconds: 2000));
+      final lookup = await InternetAddress.lookup(
+        'api.groq.com',
+      ).timeout(const Duration(milliseconds: 2000));
       return lookup.isNotEmpty && lookup[0].rawAddress.isNotEmpty;
     } catch (_) {
       try {
-        final fallbackLookup = await InternetAddress.lookup('google.com')
-            .timeout(const Duration(milliseconds: 1500));
+        final fallbackLookup = await InternetAddress.lookup(
+          'google.com',
+        ).timeout(const Duration(milliseconds: 1500));
         return fallbackLookup.isNotEmpty &&
             fallbackLookup[0].rawAddress.isNotEmpty;
       } catch (_) {
@@ -185,7 +184,7 @@ class AIRatingService {
   Future<AIRatingResult> rateImage(File imageFile, String categoryLabel) async {
     if (!isKeyConfigured) {
       debugPrint(
-        '⚠️ Neither GROQ_API_KEY nor GEMINI_API_KEY is configured in .env!',
+        '⚠️ Neither GEMINI_API_KEY nor GROQ_API_KEY is configured in .env!',
       );
       throw Exception('AI API key is not configured.');
     }
@@ -194,15 +193,15 @@ class AIRatingService {
     final isOnline = await hasInternetConnection();
     if (!isOnline) {
       debugPrint('❌ Instant offline detection: device not connected.');
-      throw Exception('No internet connection. Please check your network and try again.');
+      throw Exception(
+        'No internet connection. Please check your network and try again.',
+      );
     }
 
+    // ── 1. Try Groq Keys in round-robin sequence first ────────────────
     final groqKeys = _groqApiKeys;
-
-    // ── 1. Try Groq Keys in round-robin sequence ────────────────────────
     if (groqKeys.isNotEmpty) {
       final startIndex = _currentGroqKeyIndex % groqKeys.length;
-      // Advance key index for the next user rating call
       _currentGroqKeyIndex = (_currentGroqKeyIndex + 1) % groqKeys.length;
 
       debugPrint(
@@ -234,7 +233,6 @@ class AIRatingService {
           debugPrint(
             '⚠️ Groq Key #${keyIndex + 1} failed ($e). Silently trying next key...',
           );
-          // Seamlessly try next key in loop without showing error to user
         }
       }
 
@@ -243,13 +241,12 @@ class AIRatingService {
       );
     }
 
-    // ── 2. Fallback to Gemini if all Groq keys fail or none configured ─
+    // ── 2. Fallback to Gemini Keys ───────────────────────────────────────
     final geminiKeys = _geminiApiKeys;
     if (geminiKeys.isNotEmpty) {
       debugPrint(
         '🔑 Calling Gemini fallback sequence (${geminiKeys.length} key(s) available) for "$categoryLabel"...',
       );
-      dynamic lastGeminiError;
 
       for (int i = 0; i < geminiKeys.length; i++) {
         final apiKey = geminiKeys[i];
@@ -263,9 +260,7 @@ class AIRatingService {
         }
 
         try {
-          debugPrint(
-            '🔑 Attempting Gemini Key #${i + 1} ($maskedKey...)...',
-          );
+          debugPrint('🔑 Attempting Gemini Key #${i + 1} ($maskedKey...)...');
           return await _executeGeminiRateImageCall(
             imageFile,
             categoryLabel,
@@ -275,17 +270,16 @@ class AIRatingService {
           debugPrint(
             '⚠️ Gemini Key #${i + 1} failed ($e). Silently trying next Gemini key...',
           );
-          lastGeminiError = e;
         }
       }
 
-      debugPrint('❌ All ${geminiKeys.length} Gemini fallback key(s) failed.');
-      throw lastGeminiError ??
-          Exception('All Gemini API keys failed to rate the image.');
+      debugPrint(
+        '❌ All ${geminiKeys.length} Gemini API keys failed or on cooldown.',
+      );
     }
 
     throw Exception(
-      'All Groq API keys failed and no valid Gemini API keys are configured.',
+      'All Groq and Gemini API keys failed or none are validly configured.',
     );
   }
 
@@ -310,10 +304,13 @@ class AIRatingService {
 
     final promptText =
         'Rate this "$categoryLabel" photo on a scale of 1.0 to 10.0. '
-        'Be a funny, witty Gen-Z critic, specific about what you see in the photo, and use emojis. '
-        'Keep your remarks to exactly 1 sentence and make it so comedy that anyone in the world will laugh no matter what. '
+        'If the photo looks great, high quality, or impressive, give an amazing, top-tier compliment! '
+        'If the photo looks bad, low effort, or messy, give a hilarious, savage, real roast! '
+        'Do NOT always roast—match your tone to the quality of what you see (compliment good photos, roast bad ones). '
+        'Be specific about what you see in the photo, use emojis, and keep your remarks to exactly 1 sentence. '
+        'Respond in the language that best matches any text found in the image, or the language you think the user expects. '
         'You MUST return ONLY a JSON object in this exact format: '
-        '{"rating": 8.5, "remarks": "your funny review here"}';
+        '{"rating": 8.5, "remarks": "your review here"}';
 
     final body = jsonEncode({
       "model": _groqModel,
@@ -321,21 +318,16 @@ class AIRatingService {
         {
           "role": "user",
           "content": [
-            {
-              "type": "text",
-              "text": promptText,
-            },
+            {"type": "text", "text": promptText},
             {
               "type": "image_url",
-              "image_url": {
-                "url": "data:image/png;base64,$base64Image",
-              },
-            }
-          ]
-        }
+              "image_url": {"url": "data:image/png;base64,$base64Image"},
+            },
+          ],
+        },
       ],
       "temperature": 0.7,
-      "response_format": {"type": "json_object"}
+      "response_format": {"type": "json_object"},
     });
 
     final response = await http
@@ -348,17 +340,25 @@ class AIRatingService {
         );
 
     if (response.statusCode != 200) {
-      debugPrint('❌ Groq API error response (${response.statusCode}): ${response.body}');
+      debugPrint(
+        '❌ Groq API error response (${response.statusCode}): ${response.body}',
+      );
       if (response.statusCode == 429) {
         // Cooldown for 60 seconds on rate limit
         markKeyCooldown(apiKey, const Duration(seconds: 60));
-        debugPrint('⏳ Marked Groq key on cooldown for 60s due to 429 rate limit.');
+        debugPrint(
+          '⏳ Marked Groq key on cooldown for 60s due to 429 rate limit.',
+        );
       } else if (response.statusCode == 401 || response.statusCode == 403) {
         // Cooldown for 1 hour on invalid/unauthorized key
         markKeyCooldown(apiKey, const Duration(hours: 1));
-        debugPrint('⏳ Marked Groq key on cooldown for 1h due to auth error (${response.statusCode}).');
+        debugPrint(
+          '⏳ Marked Groq key on cooldown for 1h due to auth error (${response.statusCode}).',
+        );
       }
-      throw Exception('Groq API returned error status ${response.statusCode}: ${response.body}');
+      throw Exception(
+        'Groq API returned error status ${response.statusCode}: ${response.body}',
+      );
     }
 
     // Success! Clear any cooldown for this key
@@ -393,11 +393,9 @@ class AIRatingService {
     String apiKey,
   ) async {
     final model = GenerativeModel(
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       apiKey: apiKey,
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-      ),
+      generationConfig: GenerationConfig(responseMimeType: 'application/json'),
     );
 
     final compressedBytes = await _compressImage(imageFile);
@@ -410,10 +408,13 @@ class AIRatingService {
         DataPart('image/png', compressedBytes),
         TextPart(
           'Rate this "$categoryLabel" photo on a scale of 1.0 to 10.0. '
-          'Be a funny, witty Gen-Z critic, specific about what you see in the photo, and use emojis. '
-          'Keep your remarks to exactly 1 sentence and make it so comedy that anyone in the world will laugh no matter what. '
+          'If the photo looks great, high quality, or impressive, give an amazing, top-tier compliment! '
+          'If the photo looks bad, low effort, or messy, give a hilarious, savage, real roast! '
+          'Do NOT always roast—match your tone to the quality of what you see (compliment good photos, roast bad ones). '
+          'Be specific about what you see in the photo, use emojis, and keep your remarks to exactly 1 sentence. '
+          'Respond in the language that best matches any text found in the image, or the language you think the user expects. '
           'You MUST return ONLY a JSON object in this exact format: '
-          '{"rating": 8.5, "remarks": "your funny review here"}',
+          '{"rating": 8.5, "remarks": "your review here"}',
         ),
       ]),
     ];
@@ -451,7 +452,9 @@ class AIRatingService {
           errStr.contains('quota') ||
           errStr.contains('resourceexhausted')) {
         markKeyCooldown(apiKey, const Duration(seconds: 60));
-        debugPrint('⏳ Marked Gemini key on cooldown for 60s due to rate limit.');
+        debugPrint(
+          '⏳ Marked Gemini key on cooldown for 60s due to rate limit.',
+        );
       }
       rethrow;
     }
